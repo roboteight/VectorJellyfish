@@ -1,0 +1,10 @@
+.canvas-container {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: radial-gradient(circle at center, #0a192f 0%, #020c1b 100%);
+  margin: 0;
+}
+canvas {
+  display: block;
+}
