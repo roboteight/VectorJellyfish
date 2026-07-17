@@ -55,7 +55,7 @@ export class JellyfishCanvasComponent implements AfterViewInit, OnDestroy {
 
   private baseRadius = 50;
   private tentacleCount = 24;
-  private nodesPerTentacle = 50;
+  private nodesPerTentacle = 30;
   private nodeDistance = 25;
   private tentacles: TentacleNode[][] = [];
 
@@ -141,20 +141,16 @@ export class JellyfishCanvasComponent implements AfterViewInit, OnDestroy {
 
     this.pulseCycle += 0.04;
 
-    // Tentacles root dynamically inside the opening ellipse
     const pulseScale = 1 + Math.sin(this.pulseCycle) * 0.12;
     const r = this.baseRadius * pulseScale;
-    const ellipseYRadius = r * 0.25; // Depth projection of the opening
+    const ellipseYRadius = r * 0.25;
 
     const spacing = (r * 1.4) / (this.tentacleCount - 1);
 
     this.tentacles.forEach((tentacle, tIndex) => {
       const offsetX = -r * 0.7 + tIndex * spacing;
-
-      // Map x position onto the bottom ring to calculate depth (Z-offset)
       const pct = offsetX / r;
       const offsetZ = Math.sqrt(Math.max(0, 1 - pct * pct));
-      // Place the tentacles slightly deep inside the opening recess
       const offsetY = (offsetZ * ellipseYRadius * 0.3);
 
       const cos = Math.cos(this.rotation);
@@ -194,30 +190,29 @@ export class JellyfishCanvasComponent implements AfterViewInit, OnDestroy {
     this.ctx.translate(this.pos.x, this.pos.y);
     this.ctx.rotate(this.rotation);
 
-    // LAYER 1: Draw inside/back rim of the opening
+    // LAYER 1: Inside/back rim of opening
     this.drawHollowOpeningBack(r);
 
     this.ctx.restore();
 
-    // LAYER 2: Draw tentacles (Now sandwiched safely inside the dome layers)
+    // LAYER 2: Trailing tentacles
     this.drawTentacles();
 
     this.ctx.save();
     this.ctx.translate(this.pos.x, this.pos.y);
     this.ctx.rotate(this.rotation);
 
-    // LAYER 3: Draw outer half-sphere shell covering the front
+    // LAYER 3: Outer shell with horizontal AND vertical grid ribs
     this.drawHollowShellFront(r);
 
     this.ctx.restore();
   }
 
   private drawHollowOpeningBack(r: number): void {
-    const ry = r * 0.25; // Squashed ellipse depth profile
+    const ry = r * 0.25;
     this.ctx.beginPath();
-    // Draw only the top half of the base ellipse (receding inside the sphere)
     this.ctx.ellipse(0, 0, r, ry, 0, Math.PI, 0, false);
-    this.ctx.fillStyle = 'rgba(5, 15, 35, 0.85)'; // Dark interior shade
+    this.ctx.fillStyle = 'rgba(5, 15, 35, 0.85)';
     this.ctx.fill();
     this.ctx.strokeStyle = 'rgba(0, 240, 255, 0.3)';
     this.ctx.lineWidth = 1.5;
@@ -227,43 +222,102 @@ export class JellyfishCanvasComponent implements AfterViewInit, OnDestroy {
   private drawHollowShellFront(r: number): void {
     const ry = r * 0.25;
 
+    // --- BASE TRANSLUCENT SHELL ---
+    this.ctx.save();
     this.ctx.shadowBlur = 30;
-    this.ctx.shadowColor = 'rgba(0, 240, 255, 0.6)';
+    this.ctx.shadowColor = 'rgba(0, 240, 255, 0.5)';
 
-    // Translucent Vector Shell Gradient
     const gradient = this.ctx.createLinearGradient(0, -r, 0, ry);
-    gradient.addColorStop(0, 'rgba(0, 240, 255, 0.75)');  // Outer dome apex
-    gradient.addColorStop(0.6, 'rgba(168, 85, 247, 0.35)'); // Mid bell
-    gradient.addColorStop(1, 'rgba(236, 72, 153, 0.15)');  // Front lip translucency
+    gradient.addColorStop(0, 'rgba(0, 240, 255, 0.7)');
+    gradient.addColorStop(0.6, 'rgba(168, 85, 247, 0.3)');
+    gradient.addColorStop(1, 'rgba(236, 72, 153, 0.1)');
 
     this.ctx.fillStyle = gradient;
-    this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+    this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
     this.ctx.lineWidth = 3;
 
-    // Construct the outer profile: The top spherical arc + front rim ellipse curve
     this.ctx.beginPath();
-    // 1. Smooth outer circular half-sphere dome
     this.ctx.arc(0, 0, r, Math.PI, 0, false);
-    // 2. Wrap around using the front edge of the base ellipse opening
     this.ctx.ellipse(0, 0, r, ry, 0, 0, Math.PI, false);
-
     this.ctx.closePath();
     this.ctx.fill();
     this.ctx.stroke();
+    this.ctx.restore();
 
-    // Structural highlighting line to emphasize spherical contours
+    // --- ISOMETRIC MESH: RINGS & MERIDIAN RIBS ---
+    this.ctx.save();
+    this.ctx.globalCompositeOperation = 'screen';
+    this.ctx.shadowBlur = 12;
+    this.ctx.shadowColor = 'rgba(0, 240, 255, 0.8)';
+
+    // 1. Horizontal Isometric Rings (Parallel Lines)
+    const ringLevels = [-0.4, -0.7];
+    ringLevels.forEach((level, i) => {
+      const ringY = r * level;
+      const rx = Math.sqrt(r * r - ringY * ringY);
+      const rRatio = rx * 0.25;
+
+      this.ctx.beginPath();
+      this.ctx.ellipse(0, ringY, rx, rRatio, 0, 0, Math.PI, false);
+      this.ctx.strokeStyle = i === 0 ? 'rgba(168, 85, 247, 0.7)' : 'rgba(0, 240, 255, 0.5)';
+      this.ctx.lineWidth = 1.2;
+      this.ctx.stroke();
+    });
+
+    // 2. NEW: Vertical Meridian Ribs (Longitudinal Arcs)
+    // We space 5 longitudinal curves across the front face (-0.8 to +0.8 of radius X)
+    const meridianOffsets = [-0.75, -0.4, 0, 0.4, 0.75];
+
+    meridianOffsets.forEach((offsetXFactor) => {
+      const bottomX = r * offsetXFactor;
+
+      // Calculate depth offset to map onto the bottom rim's 3D isometric perspective
+      const pct = bottomX / r;
+      const depthZ = Math.sqrt(Math.max(0, 1 - pct * pct));
+      const bottomY = depthZ * ry;
+
+      this.ctx.beginPath();
+      // Start at top dome apex (0, -r)
+      this.ctx.moveTo(0, -r);
+
+      // Quadratic curve bending out toward spherical surface margin
+      // Control point scales dynamically to preserve rounded 3D volume profile
+      const controlX = bottomX * 1.25;
+      const controlY = -r * 0.45;
+
+      this.ctx.quadraticCurveTo(controlX, controlY, bottomX, bottomY);
+
+      this.ctx.strokeStyle = Math.abs(offsetXFactor) === 0
+          ? 'rgba(255, 255, 255, 0.7)'   // Center meridian line highlighted bright white
+          : 'rgba(0, 240, 255, 0.45)';  // Side meridians cyan
+      this.ctx.lineWidth = Math.abs(offsetXFactor) === 0 ? 1.5 : 1.0;
+      this.ctx.stroke();
+    });
+
+    // 3. Floating Internal Organ / Core
+    const corePulse = Math.sin(this.pulseCycle * 1.5) * 3;
+    const coreXRadius = r * 0.28 + corePulse * 0.3;
+    const coreYRadius = r * 0.45 + corePulse;
+
+    const coreGradient = this.ctx.createRadialGradient(0, -r * 0.2, 2, 0, -r * 0.2, coreYRadius);
+    coreGradient.addColorStop(0, 'rgba(255, 255, 255, 0.9)');
+    coreGradient.addColorStop(0.3, 'rgba(0, 240, 255, 0.7)');
+    coreGradient.addColorStop(0.8, 'rgba(236, 72, 153, 0.2)');
+    coreGradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+
+    this.ctx.fillStyle = coreGradient;
+    this.ctx.beginPath();
+    this.ctx.ellipse(0, -r * 0.2, coreXRadius, coreYRadius, 0, 0, Math.PI * 2);
+    this.ctx.fill();
+
+    // 4. Outer Bottom Rim Highlight Line
     this.ctx.beginPath();
     this.ctx.ellipse(0, 0, r, ry, 0, 0, Math.PI, false);
-    this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+    this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
     this.ctx.lineWidth = 2;
     this.ctx.stroke();
 
-    // Internal translucent organic rib details
-    this.ctx.beginPath();
-    this.ctx.arc(0, -r * 0.2, r * 0.4, Math.PI, 0, false);
-    this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
-    this.ctx.lineWidth = 1;
-    this.ctx.stroke();
+    this.ctx.restore();
   }
 
   private drawTentacles(): void {
