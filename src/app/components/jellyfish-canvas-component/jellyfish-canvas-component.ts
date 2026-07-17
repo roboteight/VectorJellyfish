@@ -22,9 +22,24 @@ interface TentacleNode {
 
 @Component({
   selector: 'app-jellyfish-canvas',
-  templateUrl: './jellyfish-canvas-component.html',
-  styleUrls: ['./jellyfish-canvas-component.scss'],
-  standalone: true
+  standalone: true,
+  template: `
+    <div class="canvas-container">
+      <canvas #jellyfishCanvas></canvas>
+    </div>
+  `,
+  styles: [`
+    .canvas-container {
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background: radial-gradient(circle at center, #0a192f 0%, #020c1b 100%);
+      margin: 0;
+    }
+    canvas {
+      display: block;
+    }
+  `]
 })
 export class JellyfishCanvasComponent implements AfterViewInit, OnDestroy {
   @ViewChild('jellyfishCanvas') canvasRef!: ElementRef<HTMLCanvasElement>;
@@ -33,20 +48,20 @@ export class JellyfishCanvasComponent implements AfterViewInit, OnDestroy {
   private animationFrameId: number = 0;
   private isBrowser: boolean;
 
-  // Safe initial fallbacks for SSR environment
   private target: Point = { x: 400, y: 300 };
   private pos: Point = { x: 400, y: 300 };
   private rotation: number = 0;
   private pulseCycle: number = 0;
 
+  private baseRadius = 50;
   private tentacleCount = 24;
-  private nodesPerTentacle = 100;
-  private nodeDistance = 75;
+  private nodesPerTentacle = 50;
+  private nodeDistance = 25;
   private tentacles: TentacleNode[][] = [];
 
   constructor(
-    private ngZone: NgZone,
-    @Inject(PLATFORM_ID) platformId: object
+      private ngZone: NgZone,
+      @Inject(PLATFORM_ID) platformId: object
   ) {
     this.isBrowser = isPlatformBrowser(platformId);
   }
@@ -54,7 +69,6 @@ export class JellyfishCanvasComponent implements AfterViewInit, OnDestroy {
   ngAfterViewInit(): void {
     if (!this.isBrowser) return;
 
-    /* Safely set window positions once mounted in browser. */
     this.target = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
     this.pos = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
 
@@ -74,7 +88,6 @@ export class JellyfishCanvasComponent implements AfterViewInit, OnDestroy {
 
   ngOnDestroy(): void {
     if (!this.isBrowser) return;
-
     window.removeEventListener('resize', this.onResize);
     window.removeEventListener('mousemove', this.onMouseMove);
     cancelAnimationFrame(this.animationFrameId);
@@ -128,16 +141,27 @@ export class JellyfishCanvasComponent implements AfterViewInit, OnDestroy {
 
     this.pulseCycle += 0.04;
 
-    const bellRadius = 45;
-    const spacing = (bellRadius * 1.5) / (this.tentacleCount - 1);
+    // Tentacles root dynamically inside the opening ellipse
+    const pulseScale = 1 + Math.sin(this.pulseCycle) * 0.12;
+    const r = this.baseRadius * pulseScale;
+    const ellipseYRadius = r * 0.25; // Depth projection of the opening
+
+    const spacing = (r * 1.4) / (this.tentacleCount - 1);
 
     this.tentacles.forEach((tentacle, tIndex) => {
-      const offsetX = -bellRadius * 0.75 + tIndex * spacing;
+      const offsetX = -r * 0.7 + tIndex * spacing;
+
+      // Map x position onto the bottom ring to calculate depth (Z-offset)
+      const pct = offsetX / r;
+      const offsetZ = Math.sqrt(Math.max(0, 1 - pct * pct));
+      // Place the tentacles slightly deep inside the opening recess
+      const offsetY = (offsetZ * ellipseYRadius * 0.3);
+
       const cos = Math.cos(this.rotation);
       const sin = Math.sin(this.rotation);
 
-      const rootX = this.pos.x + (offsetX * cos - 10 * sin);
-      const rootY = this.pos.y + (offsetX * sin + 10 * cos);
+      const rootX = this.pos.x + (offsetX * cos - offsetY * sin);
+      const rootY = this.pos.y + (offsetX * sin + offsetY * cos);
 
       tentacle[0].x = rootX;
       tentacle[0].y = rootY;
@@ -164,49 +188,82 @@ export class JellyfishCanvasComponent implements AfterViewInit, OnDestroy {
     this.ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     const pulseScale = 1 + Math.sin(this.pulseCycle) * 0.12;
+    const r = this.baseRadius * pulseScale;
 
-    this.drawTentacles();
-    this.drawBell(pulseScale);
-  }
-
-  private drawBell(pulseScale: number): void {
     this.ctx.save();
     this.ctx.translate(this.pos.x, this.pos.y);
     this.ctx.rotate(this.rotation);
 
-    this.ctx.shadowBlur = 25;
-    this.ctx.shadowColor = 'rgba(0, 240, 255, 0.7)';
+    // LAYER 1: Draw inside/back rim of the opening
+    this.drawHollowOpeningBack(r);
 
-    const gradient = this.ctx.createLinearGradient(0, -60, 0, 20);
-    gradient.addColorStop(0, 'rgba(0, 240, 255, 0.8)');
-    gradient.addColorStop(0.6, 'rgba(168, 85, 247, 0.4)');
-    gradient.addColorStop(1, 'rgba(236, 72, 153, 0.1)');
+    this.ctx.restore();
+
+    // LAYER 2: Draw tentacles (Now sandwiched safely inside the dome layers)
+    this.drawTentacles();
+
+    this.ctx.save();
+    this.ctx.translate(this.pos.x, this.pos.y);
+    this.ctx.rotate(this.rotation);
+
+    // LAYER 3: Draw outer half-sphere shell covering the front
+    this.drawHollowShellFront(r);
+
+    this.ctx.restore();
+  }
+
+  private drawHollowOpeningBack(r: number): void {
+    const ry = r * 0.25; // Squashed ellipse depth profile
+    this.ctx.beginPath();
+    // Draw only the top half of the base ellipse (receding inside the sphere)
+    this.ctx.ellipse(0, 0, r, ry, 0, Math.PI, 0, false);
+    this.ctx.fillStyle = 'rgba(5, 15, 35, 0.85)'; // Dark interior shade
+    this.ctx.fill();
+    this.ctx.strokeStyle = 'rgba(0, 240, 255, 0.3)';
+    this.ctx.lineWidth = 1.5;
+    this.ctx.stroke();
+  }
+
+  private drawHollowShellFront(r: number): void {
+    const ry = r * 0.25;
+
+    this.ctx.shadowBlur = 30;
+    this.ctx.shadowColor = 'rgba(0, 240, 255, 0.6)';
+
+    // Translucent Vector Shell Gradient
+    const gradient = this.ctx.createLinearGradient(0, -r, 0, ry);
+    gradient.addColorStop(0, 'rgba(0, 240, 255, 0.75)');  // Outer dome apex
+    gradient.addColorStop(0.6, 'rgba(168, 85, 247, 0.35)'); // Mid bell
+    gradient.addColorStop(1, 'rgba(236, 72, 153, 0.15)');  // Front lip translucency
 
     this.ctx.fillStyle = gradient;
     this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
-    this.ctx.lineWidth = 2.5;
+    this.ctx.lineWidth = 3;
 
+    // Construct the outer profile: The top spherical arc + front rim ellipse curve
     this.ctx.beginPath();
-    this.ctx.moveTo(-45 * pulseScale, 10);
-    this.ctx.bezierCurveTo(
-      -50 * pulseScale, -60 / pulseScale,
-      50 * pulseScale, -60 / pulseScale,
-      45 * pulseScale, 10
-    );
-    this.ctx.quadraticCurveTo(22.5 * pulseScale, 0, 0, 10 / pulseScale);
-    this.ctx.quadraticCurveTo(-22.5 * pulseScale, 0, -45 * pulseScale, 10);
+    // 1. Smooth outer circular half-sphere dome
+    this.ctx.arc(0, 0, r, Math.PI, 0, false);
+    // 2. Wrap around using the front edge of the base ellipse opening
+    this.ctx.ellipse(0, 0, r, ry, 0, 0, Math.PI, false);
 
     this.ctx.closePath();
     this.ctx.fill();
     this.ctx.stroke();
 
+    // Structural highlighting line to emphasize spherical contours
     this.ctx.beginPath();
-    this.ctx.arc(0, -20, 18 * pulseScale, Math.PI, 0);
-    this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
-    this.ctx.lineWidth = 1.5;
+    this.ctx.ellipse(0, 0, r, ry, 0, 0, Math.PI, false);
+    this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+    this.ctx.lineWidth = 2;
     this.ctx.stroke();
 
-    this.ctx.restore();
+    // Internal translucent organic rib details
+    this.ctx.beginPath();
+    this.ctx.arc(0, -r * 0.2, r * 0.4, Math.PI, 0, false);
+    this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+    this.ctx.lineWidth = 1;
+    this.ctx.stroke();
   }
 
   private drawTentacles(): void {
@@ -225,7 +282,7 @@ export class JellyfishCanvasComponent implements AfterViewInit, OnDestroy {
       }
 
       const isInner = index % 2 === 0;
-      this.ctx.strokeStyle = isInner ? 'rgba(0, 240, 255, 0.6)' : 'rgba(236, 72, 153, 0.5)';
+      this.ctx.strokeStyle = isInner ? 'rgba(0, 240, 255, 0.65)' : 'rgba(236, 72, 153, 0.5)';
       this.ctx.lineWidth = isInner ? 2.5 : 1.5;
       this.ctx.stroke();
     });
