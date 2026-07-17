@@ -1,3 +1,4 @@
+<img width="924" height="878" alt="Screenshot 2026-07-17 at 5 49 29 PM" src="https://github.com/user-attachments/assets/0d5fee09-7561-481f-9218-b140ffe94a1d" />
 # VectorJellyfish
 
 This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 21.2.19.
