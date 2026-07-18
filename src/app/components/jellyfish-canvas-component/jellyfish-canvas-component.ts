@@ -20,6 +20,20 @@ interface TentacleNode {
   y: number;
 }
 
+interface GlowOrb {
+  xFactor: number;
+  yFactor: number;
+  pushXFactor: number;
+  pushYFactor: number;
+  proximity: number;
+  driftPhase: number;
+  driftSpeed: number;
+  pulsePhase: number;
+  pulseSpeed: number;
+  size: number;
+  color: string;
+}
+
 @Component({
   selector: 'app-jellyfish-canvas',
   standalone: true,
@@ -52,12 +66,31 @@ export class JellyfishCanvasComponent implements AfterViewInit, OnDestroy {
   private pos: Point = { x: 400, y: 300 };
   private rotation: number = 0;
   private pulseCycle: number = 0;
+  private chaseSpeed = 0.03;
+
+  private readonly idleDartDelayMs = 5000;
+  private lastActivityTime = 0;
+  private isDarting = false;
+  private dartTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
   private baseRadius = 50;
   private tentacleCount = 24;
   private nodesPerTentacle = 30;
   private nodeDistance = 25;
   private tentacles: TentacleNode[][] = [];
+
+  private orbCount = 7;
+  private orbs: GlowOrb[] = [];
+
+  private skirtSegments = 36;
+  private skirtPhaseOffsets: number[] = [];
+  private skirtCycle = 0;
+
+  private sheathSegments = 30;
+  private sheathStrandCount = 14;
+  private sheathJitter: number[] = [];
+  private sheathDriftCycle = 0;
+  private sheathPoints: Point[][] = [];
 
   constructor(
       private ngZone: NgZone,
@@ -71,6 +104,7 @@ export class JellyfishCanvasComponent implements AfterViewInit, OnDestroy {
 
     this.target = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
     this.pos = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+    this.lastActivityTime = Date.now();
 
     const canvas = this.canvasRef.nativeElement;
     this.ctx = canvas.getContext('2d')!;
@@ -80,6 +114,9 @@ export class JellyfishCanvasComponent implements AfterViewInit, OnDestroy {
     window.addEventListener('mousemove', this.onMouseMove);
 
     this.initTentacles();
+    this.initOrbs();
+    this.initSkirt();
+    this.initSheath();
 
     this.ngZone.runOutsideAngular(() => {
       this.animate();
@@ -91,6 +128,9 @@ export class JellyfishCanvasComponent implements AfterViewInit, OnDestroy {
     window.removeEventListener('resize', this.onResize);
     window.removeEventListener('mousemove', this.onMouseMove);
     cancelAnimationFrame(this.animationFrameId);
+    if (this.dartTimeoutId !== null) {
+      clearTimeout(this.dartTimeoutId);
+    }
   }
 
   private onResize = (): void => {
@@ -107,7 +147,39 @@ export class JellyfishCanvasComponent implements AfterViewInit, OnDestroy {
   private onMouseMove = (e: MouseEvent): void => {
     this.target.x = e.clientX;
     this.target.y = e.clientY;
+    this.lastActivityTime = Date.now();
+
+    if (this.isDarting) {
+      this.isDarting = false;
+      this.chaseSpeed = 0.03;
+      if (this.dartTimeoutId !== null) {
+        clearTimeout(this.dartTimeoutId);
+        this.dartTimeoutId = null;
+      }
+    }
   };
+
+  // Fires after idleDartDelayMs of no mouse movement: sends the jellyfish
+  // shooting off toward a random point, then eases back to its normal,
+  // mouse-following cruise speed once the burst is done.
+  private triggerIdleDart(): void {
+    this.isDarting = true;
+    this.lastActivityTime = Date.now();
+
+    const angle = Math.random() * Math.PI * 2;
+    const distance = 500 + Math.random() * 500;
+    this.target = {
+      x: this.pos.x + Math.cos(angle) * distance,
+      y: this.pos.y + Math.sin(angle) * distance
+    };
+    this.chaseSpeed = 0.12;
+
+    this.dartTimeoutId = setTimeout(() => {
+      this.chaseSpeed = 0.03;
+      this.isDarting = false;
+      this.dartTimeoutId = null;
+    }, 1400);
+  }
 
   private initTentacles(): void {
     this.tentacles = [];
@@ -120,6 +192,149 @@ export class JellyfishCanvasComponent implements AfterViewInit, OnDestroy {
     }
   }
 
+  private initOrbs(): void {
+    const colors = ['0, 240, 255', '168, 85, 247', '236, 72, 153', '255, 255, 255'];
+    this.orbs = [];
+    for (let i = 0; i < this.orbCount; i++) {
+      this.orbs.push({
+        xFactor: (Math.random() * 2 - 1) * 0.55,
+        yFactor: -0.15 + (Math.random() * 2 - 1) * 0.55,
+        pushXFactor: 0,
+        pushYFactor: 0,
+        proximity: 0,
+        driftPhase: Math.random() * Math.PI * 2,
+        driftSpeed: 0.006 + Math.random() * 0.01,
+        pulsePhase: Math.random() * Math.PI * 2,
+        pulseSpeed: 0.02 + Math.random() * 0.025,
+        size: 2.5 + Math.random() * 3.5,
+        color: colors[i % colors.length]
+      });
+    }
+  }
+
+  private initSkirt(): void {
+    this.skirtPhaseOffsets = [];
+    for (let i = 0; i <= this.skirtSegments; i++) {
+      this.skirtPhaseOffsets.push(Math.random() * Math.PI * 2);
+    }
+  }
+
+  private initSheath(): void {
+    this.sheathJitter = [];
+    for (let i = 0; i <= this.sheathSegments; i++) {
+      this.sheathJitter.push(Math.random() * Math.PI * 2);
+    }
+
+    this.sheathPoints = [];
+    for (let k = 0; k < this.sheathStrandCount; k++) {
+      const strand: Point[] = [];
+      for (let i = 0; i <= this.sheathSegments; i++) {
+        strand.push(this.sheathTarget(this.baseRadius, k, i));
+      }
+      this.sheathPoints.push(strand);
+    }
+  }
+
+  // The ideal, current-driven position for a sheath point -- what it's being
+  // pulled toward. updateSheath() has each point chase this with lag rather
+  // than snapping straight to it, which is what gives the strands inertia.
+  private sheathTarget(r: number, k: number, i: number): Point {
+    const ry = r * 0.25;
+    const segments = this.sheathSegments;
+    const halfWidthTop = r * 0.4;
+    const length = r * 1.2; // ~1.5x the skirt's ~0.8r depth
+    const flareAmount = halfWidthTop * 1.8;
+    const maxSway = r * 0.3;
+    const topAttachY = ry * 0.85;
+    const strandCount = this.sheathStrandCount;
+
+    const widthFrac = strandCount === 1 ? 0 : -1 + (2 * k) / (strandCount - 1);
+    const s = i / segments;
+    const depthFactor = Math.pow(s, 1.3);
+
+    // Layered, multi-frequency motion like a net drifting underwater: one wave
+    // synced to the tentacle pulse so it still reads as "moving with" them, plus
+    // two slower/faster independent currents at different wavelengths riding on
+    // top, so the whole bundle ripples rather than swinging as one rigid whip.
+    const swayPulse = Math.sin(this.pulseCycle - s * 3.2) * maxSway * 0.45;
+    const swayCurrentA = Math.sin(this.sheathDriftCycle * 0.55 + s * 4.2) * maxSway * 0.4;
+    const swayCurrentB = Math.sin(this.sheathDriftCycle * 1.35 - s * 7.5 + this.sheathJitter[i] * 0.4) * maxSway * 0.25;
+    const sway = (swayPulse + swayCurrentA + swayCurrentB) * depthFactor;
+
+    // Gentle vertical billow, so it breathes lengthwise like a net swaying in a current
+    const billow = Math.sin(this.sheathDriftCycle * 0.85 + s * 5.5 + widthFrac) * length * 0.02 * depthFactor;
+    const y = topAttachY + s * length + billow;
+
+    const widthBreath = 1 + Math.sin(this.sheathDriftCycle * 0.7 + s * 3.1) * 0.1;
+    const taper = halfWidthTop * (1 - 0.3 * s);
+    const flareT = Math.max(0, Math.min(1, (s - 0.72) / 0.28));
+    const flare = flareAmount * flareT * flareT * (3 - 2 * flareT);
+    const halfWidth = (taper + flare) * widthBreath;
+
+    // Small per-strand wobble, like individual fibers rather than a rigid fan
+    const strandWobble = Math.sin(this.pulseCycle * 1.4 - s * 4 + k * 1.7) * 1.2 * depthFactor;
+
+    return { x: sway + widthFrac * halfWidth + strandWobble, y };
+  }
+
+  private updateSheath(r: number): void {
+    const segments = this.sheathSegments;
+    for (let k = 0; k < this.sheathStrandCount; k++) {
+      const strand = this.sheathPoints[k];
+      for (let i = 0; i <= segments; i++) {
+        const s = i / segments;
+        const target = this.sheathTarget(r, k, i);
+
+        // Points near the rim attachment snap to their target quickly; points
+        // further down the flare lag more, like a tentacle tip trailing behind
+        // its root. That increasing lag with depth is what gives the strands
+        // floaty, fluid follow-through instead of an instantaneously-computed curve.
+        const springRate = 0.32 - 0.22 * s;
+        const point = strand[i];
+        point.x += (target.x - point.x) * springRate;
+        point.y += (target.y - point.y) * springRate;
+      }
+    }
+  }
+
+  private updateOrbs(r: number): void {
+    // Mouse position in the jellyfish's local (unrotated) coordinate frame
+    const dxWorld = this.target.x - this.pos.x;
+    const dyWorld = this.target.y - this.pos.y;
+    const cos = Math.cos(this.rotation);
+    const sin = Math.sin(this.rotation);
+    const localMouseX = dxWorld * cos + dyWorld * sin;
+    const localMouseY = -dxWorld * sin + dyWorld * cos;
+
+    const influenceRadius = r * 3;
+    const maxPush = 0.9;
+
+    this.orbs.forEach(orb => {
+      orb.driftPhase += orb.driftSpeed;
+      orb.pulsePhase += orb.pulseSpeed;
+
+      const homeX = orb.xFactor * r * 0.75;
+      const homeY = orb.yFactor * r;
+      const dx = homeX - localMouseX;
+      const dy = homeY - localMouseY;
+      const dist = Math.sqrt(dx * dx + dy * dy) || 0.0001;
+
+      if (dist < influenceRadius) {
+        const strength = 1 - dist / influenceRadius;
+        const pushTargetX = (dx / dist) * strength * maxPush;
+        const pushTargetY = (dy / dist) * strength * maxPush;
+
+        orb.pushXFactor += (pushTargetX - orb.pushXFactor) * 0.2;
+        orb.pushYFactor += (pushTargetY - orb.pushYFactor) * 0.2;
+        orb.proximity += (strength - orb.proximity) * 0.2;
+      } else {
+        orb.pushXFactor *= 0.9;
+        orb.pushYFactor *= 0.9;
+        orb.proximity *= 0.9;
+      }
+    });
+  }
+
   private animate = (): void => {
     this.updatePhysics();
     this.draw();
@@ -127,12 +342,16 @@ export class JellyfishCanvasComponent implements AfterViewInit, OnDestroy {
   };
 
   private updatePhysics(): void {
+    if (!this.isDarting && Date.now() - this.lastActivityTime > this.idleDartDelayMs) {
+      this.triggerIdleDart();
+    }
+
     const dx = this.target.x - this.pos.x;
     const dy = this.target.y - this.pos.y;
-    this.pos.x += dx * 0.03;
-    this.pos.y += dy * 0.03;
+    this.pos.x += dx * this.chaseSpeed;
+    this.pos.y += dy * this.chaseSpeed;
 
-    const targetAngle = Math.atan2(dy, dx) - Math.PI / 2;
+    const targetAngle = Math.atan2(dy, dx) + Math.PI / 2;
     let angleDiff = targetAngle - this.rotation;
 
     while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
@@ -140,10 +359,15 @@ export class JellyfishCanvasComponent implements AfterViewInit, OnDestroy {
     this.rotation += angleDiff * 0.05;
 
     this.pulseCycle += 0.04;
+    this.skirtCycle += 0.015;
+    this.sheathDriftCycle += 0.011;
 
     const pulseScale = 1 + Math.sin(this.pulseCycle) * 0.12;
     const r = this.baseRadius * pulseScale;
     const ellipseYRadius = r * 0.25;
+
+    this.updateOrbs(r);
+    this.updateSheath(r);
 
     const spacing = (r * 1.4) / (this.tentacleCount - 1);
 
@@ -202,7 +426,13 @@ export class JellyfishCanvasComponent implements AfterViewInit, OnDestroy {
     this.ctx.translate(this.pos.x, this.pos.y);
     this.ctx.rotate(this.rotation);
 
-    // LAYER 3: Outer shell with horizontal AND vertical grid ribs
+    // LAYER 3: Long narrow sheath containing the tentacle bases, flaring like a trumpet
+    this.drawSheath();
+
+    // LAYER 4: Rippling skirt/frill hanging under the bell, over the tentacle roots
+    this.drawSkirt(r);
+
+    // LAYER 5: Outer shell with horizontal AND vertical grid ribs
     this.drawHollowShellFront(r);
 
     this.ctx.restore();
@@ -217,6 +447,111 @@ export class JellyfishCanvasComponent implements AfterViewInit, OnDestroy {
     this.ctx.strokeStyle = 'rgba(0, 240, 255, 0.3)';
     this.ctx.lineWidth = 1.5;
     this.ctx.stroke();
+  }
+
+  // Appends a smooth quadratic curve through points to the current path.
+  // Assumes the path's current position is already at points[0] (via a prior
+  // moveTo/lineTo), and ends exactly at the last point.
+  private tracePathSmooth(points: Point[]): void {
+    for (let i = 0; i < points.length - 1; i++) {
+      const xc = (points[i].x + points[i + 1].x) / 2;
+      const yc = (points[i].y + points[i + 1].y) / 2;
+      this.ctx.quadraticCurveTo(points[i].x, points[i].y, xc, yc);
+    }
+    const last = points[points.length - 1];
+    this.ctx.lineTo(last.x, last.y);
+  }
+
+  private drawSheath(): void {
+    this.ctx.save();
+    this.ctx.shadowBlur = 12;
+    this.ctx.shadowColor = 'rgba(236, 72, 153, 0.5)';
+
+    this.sheathPoints.forEach((points, k) => {
+      this.ctx.beginPath();
+      this.ctx.moveTo(points[0].x, points[0].y);
+      this.tracePathSmooth(points);
+
+      const isInner = k % 2 === 0;
+      this.ctx.strokeStyle = isInner ? 'rgba(0, 240, 255, 0.5)' : 'rgba(236, 72, 153, 0.4)';
+      this.ctx.lineWidth = isInner ? 1.6 : 1.1;
+      this.ctx.stroke();
+    });
+
+    this.ctx.restore();
+  }
+
+  private drawSkirt(r: number): void {
+    const ry = r * 0.25;
+    const segments = this.skirtSegments;
+    const spanX = r * 0.78;
+    const hangDepth = r * 0.55;
+    const rippleAmp = r * 0.12;
+    const swayAmp = r * 0.04;
+
+    const topPoints: Point[] = [];
+    const bottomPoints: Point[] = [];
+
+    for (let i = 0; i <= segments; i++) {
+      const t = i / segments;
+      const baseX = -spanX + t * spanX * 2;
+      const pct = baseX / r;
+      const depthZ = Math.sqrt(Math.max(0, 1 - pct * pct));
+      const topY = depthZ * ry * 0.9;
+
+      // Smooth traveling waves across the width, like a current moving through water
+      const wave = Math.sin(this.skirtCycle + t * Math.PI * 2.4) * rippleAmp
+          + Math.sin(this.skirtCycle * 1.5 - t * Math.PI * 3.6) * rippleAmp * 0.5;
+      // subtle per-vertex jitter so it reads as organic rather than mechanical
+      const jitter = Math.sin(this.skirtCycle * 2 + this.skirtPhaseOffsets[i]) * rippleAmp * 0.15;
+      const sway = Math.sin(this.skirtCycle * 0.8 + t * Math.PI * 2 + this.skirtPhaseOffsets[i]) * swayAmp;
+
+      const bottomY = topY + hangDepth * (0.55 + depthZ * 0.45) + wave + jitter;
+
+      topPoints.push({ x: baseX, y: topY });
+      bottomPoints.push({ x: baseX + sway, y: bottomY });
+    }
+
+    this.ctx.save();
+    this.ctx.globalCompositeOperation = 'screen';
+    this.ctx.shadowBlur = 8;
+    this.ctx.shadowColor = 'rgba(0, 240, 255, 0.4)';
+
+    const gradient = this.ctx.createLinearGradient(0, 0, 0, hangDepth + rippleAmp);
+    gradient.addColorStop(0, 'rgba(0, 240, 255, 0.3)');
+    gradient.addColorStop(0.5, 'rgba(168, 85, 247, 0.18)');
+    gradient.addColorStop(1, 'rgba(236, 72, 153, 0.04)');
+
+    this.ctx.beginPath();
+    this.ctx.moveTo(topPoints[0].x, topPoints[0].y);
+    for (let i = 1; i < topPoints.length; i++) {
+      this.ctx.lineTo(topPoints[i].x, topPoints[i].y);
+    }
+    for (let i = bottomPoints.length - 1; i >= 0; i--) {
+      this.ctx.lineTo(bottomPoints[i].x, bottomPoints[i].y);
+    }
+    this.ctx.closePath();
+    this.ctx.fillStyle = gradient;
+    this.ctx.fill();
+
+    // Fine tightly-grouped ripple strands tracing the rippling hem, like water
+    this.ctx.lineWidth = 0.8;
+    for (let strand = 0; strand < 3; strand++) {
+      const depthLerp = 0.4 + strand * 0.3;
+      this.ctx.beginPath();
+      for (let i = 0; i < bottomPoints.length; i++) {
+        const x = topPoints[i].x + (bottomPoints[i].x - topPoints[i].x) * depthLerp;
+        const y = topPoints[i].y + (bottomPoints[i].y - topPoints[i].y) * depthLerp;
+        if (i === 0) this.ctx.moveTo(x, y);
+        else this.ctx.lineTo(x, y);
+      }
+      this.ctx.strokeStyle = strand % 2 === 0
+          ? 'rgba(0, 240, 255, 0.3)'
+          : 'rgba(255, 255, 255, 0.2)';
+      this.ctx.stroke();
+    }
+
+    this.ctx.restore();
   }
 
   private drawHollowShellFront(r: number): void {
@@ -310,12 +645,55 @@ export class JellyfishCanvasComponent implements AfterViewInit, OnDestroy {
     this.ctx.ellipse(0, -r * 0.2, coreXRadius, coreYRadius, 0, 0, Math.PI * 2);
     this.ctx.fill();
 
+    // 3b. Floating Glowing Orbs (bioluminescent particles inside the bell)
+    this.drawOrbs(r, ry);
+
     // 4. Outer Bottom Rim Highlight Line
     this.ctx.beginPath();
     this.ctx.ellipse(0, 0, r, ry, 0, 0, Math.PI, false);
     this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
     this.ctx.lineWidth = 2;
     this.ctx.stroke();
+
+    this.ctx.restore();
+  }
+
+  private drawOrbs(r: number, ry: number): void {
+    this.ctx.save();
+
+    // Clip to the bell interior so orbs never poke outside the shell
+    this.ctx.beginPath();
+    this.ctx.arc(0, 0, r, Math.PI, 0, false);
+    this.ctx.ellipse(0, 0, r, ry, 0, 0, Math.PI, false);
+    this.ctx.closePath();
+    this.ctx.clip();
+
+    this.orbs.forEach(orb => {
+      const driftX = Math.sin(orb.driftPhase) * r * 0.1;
+      const driftY = Math.cos(orb.driftPhase * 1.3) * ry * 0.35;
+
+      const x = (orb.xFactor + orb.pushXFactor) * r * 0.75 + driftX;
+      const y = (orb.yFactor + orb.pushYFactor) * r + driftY;
+
+      const pulse = 0.5 + Math.sin(orb.pulsePhase) * 0.5;
+      const excite = 1 + orb.proximity * 1.2;
+      const radius = orb.size * (0.6 + pulse * 0.7) * excite;
+
+      const glow = this.ctx.createRadialGradient(x, y, 0, x, y, radius * 4);
+      glow.addColorStop(0, `rgba(${orb.color}, ${Math.min(1, 0.9 + orb.proximity * 0.3)})`);
+      glow.addColorStop(0.4, `rgba(${orb.color}, ${Math.min(1, 0.2 + pulse * 0.3 + orb.proximity * 0.4)})`);
+      glow.addColorStop(1, `rgba(${orb.color}, 0)`);
+
+      this.ctx.fillStyle = glow;
+      this.ctx.beginPath();
+      this.ctx.arc(x, y, radius * 4, 0, Math.PI * 2);
+      this.ctx.fill();
+
+      this.ctx.beginPath();
+      this.ctx.arc(x, y, radius * 0.35, 0, Math.PI * 2);
+      this.ctx.fillStyle = `rgba(255, 255, 255, ${Math.min(1, 0.6 + pulse * 0.4 + orb.proximity * 0.4)})`;
+      this.ctx.fill();
+    });
 
     this.ctx.restore();
   }
