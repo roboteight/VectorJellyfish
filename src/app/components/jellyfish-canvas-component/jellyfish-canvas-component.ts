@@ -20,6 +20,31 @@ interface TentacleNode {
   y: number;
 }
 
+interface BokehParticle {
+  xFrac: number;
+  yFrac: number;
+  radius: number;
+  opacity: number;
+  color: string;
+  layer: number;
+  driftPhase: number;
+  popping: boolean;
+  popProgress: number;
+  screenX: number;
+  screenY: number;
+  screenRadius: number;
+}
+
+interface BokehLayerConfig {
+  count: number;
+  radiusRange: [number, number];
+  opacityRange: [number, number];
+  parallaxRange: number;
+  bobAmount: number;
+  driftSpeedScale: number;
+  outline?: boolean;
+}
+
 interface GlowOrb {
   xFactor: number;
   yFactor: number;
@@ -92,6 +117,25 @@ export class JellyfishCanvasComponent implements AfterViewInit, OnDestroy {
   private sheathDriftCycle = 0;
   private sheathPoints: Point[][] = [];
 
+  // Back-to-front depth layers: farther layers have smaller/dimmer/more numerous
+  // particles and shift less with the mouse; nearer layers shift more, which is
+  // what sells the parallax depth illusion. The closest layer gets a subtle
+  // outline, like the rim definition real out-of-focus bokeh circles show
+  // when they're nearer the focal plane than the deep background blur.
+  private readonly bokehLayers: BokehLayerConfig[] = [
+    { count: 42, radiusRange: [4, 9], opacityRange: [0.02, 0.04], parallaxRange: 4, bobAmount: 3, driftSpeedScale: 0.35 },
+    { count: 30, radiusRange: [8, 16], opacityRange: [0.04, 0.08], parallaxRange: 10, bobAmount: 5, driftSpeedScale: 0.5 },
+    { count: 20, radiusRange: [14, 26], opacityRange: [0.06, 0.11], parallaxRange: 26, bobAmount: 9, driftSpeedScale: 0.75 },
+    { count: 12, radiusRange: [22, 40], opacityRange: [0.08, 0.15], parallaxRange: 48, bobAmount: 15, driftSpeedScale: 1 },
+    { count: 8, radiusRange: [32, 58], opacityRange: [0.1, 0.18], parallaxRange: 75, bobAmount: 22, driftSpeedScale: 1.3, outline: true }
+  ];
+  private readonly bokehColors = ['0, 240, 255', '168, 85, 247', '236, 72, 153'];
+  private bokehParticles: BokehParticle[] = [];
+  private bokehCycle = 0;
+  private parallax: Point = { x: 0, y: 0 };
+  private ambientPopTimer = 0;
+  private readonly ambientPopIntervalFrames = 1800; // ~30s at 60fps: one random ambient pop
+
   constructor(
       private ngZone: NgZone,
       @Inject(PLATFORM_ID) platformId: object
@@ -112,11 +156,13 @@ export class JellyfishCanvasComponent implements AfterViewInit, OnDestroy {
     this.resizeCanvas();
     window.addEventListener('resize', this.onResize);
     window.addEventListener('mousemove', this.onMouseMove);
+    window.addEventListener('click', this.onClick);
 
     this.initTentacles();
     this.initOrbs();
     this.initSkirt();
     this.initSheath();
+    this.initBokeh();
 
     this.ngZone.runOutsideAngular(() => {
       this.animate();
@@ -127,6 +173,7 @@ export class JellyfishCanvasComponent implements AfterViewInit, OnDestroy {
     if (!this.isBrowser) return;
     window.removeEventListener('resize', this.onResize);
     window.removeEventListener('mousemove', this.onMouseMove);
+    window.removeEventListener('click', this.onClick);
     cancelAnimationFrame(this.animationFrameId);
     if (this.dartTimeoutId !== null) {
       clearTimeout(this.dartTimeoutId);
@@ -156,6 +203,31 @@ export class JellyfishCanvasComponent implements AfterViewInit, OnDestroy {
         clearTimeout(this.dartTimeoutId);
         this.dartTimeoutId = null;
       }
+    }
+  };
+
+  // Pops the bokeh particle closest to the click, if the click landed on one.
+  private onClick = (e: MouseEvent): void => {
+    let closest: BokehParticle | null = null;
+    let closestDist = Infinity;
+
+    this.bokehParticles.forEach(p => {
+      if (p.popping) return;
+      const dx = p.screenX - e.clientX;
+      const dy = p.screenY - e.clientY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const hitRadius = Math.max(p.screenRadius * 0.9, 10);
+
+      if (dist <= hitRadius && dist < closestDist) {
+        closest = p;
+        closestDist = dist;
+      }
+    });
+
+    if (closest !== null) {
+      const p: BokehParticle = closest;
+      p.popping = true;
+      p.popProgress = 0;
     }
   };
 
@@ -210,6 +282,35 @@ export class JellyfishCanvasComponent implements AfterViewInit, OnDestroy {
         color: colors[i % colors.length]
       });
     }
+  }
+
+  private initBokeh(): void {
+    this.bokehParticles = [];
+    this.bokehLayers.forEach((layer, layerIndex) => {
+      for (let i = 0; i < layer.count; i++) {
+        this.bokehParticles.push(this.spawnBokehParticle(layerIndex));
+      }
+    });
+  }
+
+  // Builds a fresh particle for a layer -- used both for the initial fill
+  // and to replace one that just finished popping.
+  private spawnBokehParticle(layerIndex: number): BokehParticle {
+    const layer = this.bokehLayers[layerIndex];
+    return {
+      xFrac: Math.random(),
+      yFrac: Math.random(),
+      radius: layer.radiusRange[0] + Math.random() * (layer.radiusRange[1] - layer.radiusRange[0]),
+      opacity: layer.opacityRange[0] + Math.random() * (layer.opacityRange[1] - layer.opacityRange[0]),
+      color: this.bokehColors[Math.floor(Math.random() * this.bokehColors.length)],
+      layer: layerIndex,
+      driftPhase: Math.random() * Math.PI * 2,
+      popping: false,
+      popProgress: 0,
+      screenX: 0,
+      screenY: 0,
+      screenRadius: 0
+    };
   }
 
   private initSkirt(): void {
@@ -288,13 +389,57 @@ export class JellyfishCanvasComponent implements AfterViewInit, OnDestroy {
         // Points near the rim attachment snap to their target quickly; points
         // further down the flare lag more, like a tentacle tip trailing behind
         // its root. That increasing lag with depth is what gives the strands
-        // floaty, fluid follow-through instead of an instantaneously-computed curve.
+        // floaty, fluid follow-through instead of an instantaneously computed curve.
         const springRate = 0.32 - 0.22 * s;
         const point = strand[i];
         point.x += (target.x - point.x) * springRate;
         point.y += (target.y - point.y) * springRate;
       }
     }
+  }
+
+  private updateParallax(): void {
+    const canvas = this.canvasRef.nativeElement;
+    const targetX = (this.target.x - canvas.width / 2) / (canvas.width / 2);
+    const targetY = (this.target.y - canvas.height / 2) / (canvas.height / 2);
+
+    // Smoothed rather than snapped straight to the cursor, so the depth
+    // layers drift softly instead of jittering with every mouse tick
+    this.parallax.x += (targetX - this.parallax.x) * 0.04;
+    this.parallax.y += (targetY - this.parallax.y) * 0.04;
+  }
+
+  private updateBokeh(canvasWidth: number, canvasHeight: number): void {
+    const popSpeed = 0.07;
+
+    // Ambient popping: once every ~30s, pop a single random particle rather
+    // than each particle having its own independent lifespan -- keeps the
+    // random pops rare and system-wide instead of a constant flurry.
+    this.ambientPopTimer++;
+    if (this.ambientPopTimer >= this.ambientPopIntervalFrames) {
+      this.ambientPopTimer = 0;
+      const candidates = this.bokehParticles.filter(p => !p.popping);
+      if (candidates.length > 0) {
+        const chosen = candidates[Math.floor(Math.random() * candidates.length)];
+        chosen.popping = true;
+        chosen.popProgress = 0;
+      }
+    }
+
+    this.bokehParticles.forEach(p => {
+      if (p.popping) {
+        p.popProgress += popSpeed;
+        if (p.popProgress >= 1) {
+          Object.assign(p, this.spawnBokehParticle(p.layer));
+        }
+      }
+
+      const layer = this.bokehLayers[p.layer];
+      const bob = Math.sin(this.bokehCycle * layer.driftSpeedScale + p.driftPhase) * layer.bobAmount;
+      p.screenX = p.xFrac * canvasWidth + this.parallax.x * layer.parallaxRange;
+      p.screenY = p.yFrac * canvasHeight + bob + this.parallax.y * layer.parallaxRange * 0.6;
+      p.screenRadius = p.radius;
+    });
   }
 
   private updateOrbs(r: number): void {
@@ -361,6 +506,11 @@ export class JellyfishCanvasComponent implements AfterViewInit, OnDestroy {
     this.pulseCycle += 0.04;
     this.skirtCycle += 0.015;
     this.sheathDriftCycle += 0.011;
+    this.bokehCycle += 0.006;
+    this.updateParallax();
+
+    const canvas = this.canvasRef.nativeElement;
+    this.updateBokeh(canvas.width, canvas.height);
 
     const pulseScale = 1 + Math.sin(this.pulseCycle) * 0.12;
     const r = this.baseRadius * pulseScale;
@@ -410,6 +560,9 @@ export class JellyfishCanvasComponent implements AfterViewInit, OnDestroy {
     const pulseScale = 1 + Math.sin(this.pulseCycle) * 0.12;
     const r = this.baseRadius * pulseScale;
 
+    // LAYER 0: Background bokeh, drifting depth-of-field particles with parallax
+    this.drawBokeh();
+
     this.ctx.save();
     this.ctx.translate(this.pos.x, this.pos.y);
     this.ctx.rotate(this.rotation);
@@ -434,6 +587,60 @@ export class JellyfishCanvasComponent implements AfterViewInit, OnDestroy {
 
     // LAYER 5: Outer shell with horizontal AND vertical grid ribs
     this.drawHollowShellFront(r);
+
+    this.ctx.restore();
+  }
+
+  private drawBokeh(): void {
+    this.ctx.save();
+    this.ctx.globalCompositeOperation = 'screen';
+
+    this.bokehParticles.forEach(p => {
+      const layer = this.bokehLayers[p.layer];
+      const x = p.screenX;
+      const y = p.screenY;
+
+      let radius = p.screenRadius;
+      let opacity = p.opacity;
+
+      if (p.popping) {
+        // Quick ease-out expansion paired with a fade, like a bubble popping
+        const easeOut = 1 - Math.pow(1 - p.popProgress, 2);
+        radius = p.screenRadius * (1 + easeOut * 0.8);
+        opacity = p.opacity * (1 - p.popProgress);
+      }
+
+      const gradient = this.ctx.createRadialGradient(x, y, 0, x, y, radius);
+      gradient.addColorStop(0, `rgba(${p.color}, ${opacity})`);
+      gradient.addColorStop(0.6, `rgba(${p.color}, ${opacity * 0.35})`);
+      gradient.addColorStop(1, `rgba(${p.color}, 0)`);
+
+      this.ctx.fillStyle = gradient;
+      this.ctx.beginPath();
+      this.ctx.arc(x, y, radius, 0, Math.PI * 2);
+      this.ctx.fill();
+
+      // Closest layer gets a subtle rim, like the crisper edge definition
+      // real bokeh circles show when nearer the focal plane
+      if (layer.outline && !p.popping) {
+        this.ctx.beginPath();
+        this.ctx.arc(x, y, radius * 0.84, 0, Math.PI * 2);
+        this.ctx.strokeStyle = `rgba(${p.color}, ${Math.min(0.3, p.opacity * 2.2)})`;
+        this.ctx.lineWidth = 1.2;
+        this.ctx.stroke();
+      }
+
+      if (p.popping) {
+        // Expanding shockwave ring that fades out as it grows -- the "pop"
+        const ringRadius = p.screenRadius * (1 + p.popProgress * 2.2);
+        const ringAlpha = (1 - p.popProgress) * 0.5;
+        this.ctx.beginPath();
+        this.ctx.arc(x, y, ringRadius, 0, Math.PI * 2);
+        this.ctx.strokeStyle = `rgba(${p.color}, ${ringAlpha})`;
+        this.ctx.lineWidth = 1.5;
+        this.ctx.stroke();
+      }
+    });
 
     this.ctx.restore();
   }
