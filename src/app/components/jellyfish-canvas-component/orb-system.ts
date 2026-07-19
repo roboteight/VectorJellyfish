@@ -1,12 +1,12 @@
 import { GlowOrb, Point } from './jellyfish.models';
 
-// Bioluminescent orbs floating inside the bell. They drift and pulse on their
-// own, and scatter away from (and glow brighter near) the cursor.
+/*Bioluminescent orbs floating inside the bell. They drift and pulse on their
+own, and scatter away from (and glow brighter near) the cursor.*/
 export class OrbSystem {
   private orbs: GlowOrb[] = [];
 
-  // Tunable knobs -- live-editable via JellyfishConfigService/the control panel.
-  // count is structural: call init() again after changing it.
+/*  Tunable knobs -- live-editable via JellyfishConfigService/the control panel.
+  count is structural: call init() again after changing it.*/
   influenceRadiusFactor = 3;
 
   constructor(public count = 7) {}
@@ -31,8 +31,8 @@ export class OrbSystem {
     }
   }
 
-  // mouseTarget/pos/rotation are in world space; proximity is measured in the
-  // jellyfish's local (unrotated) coordinate frame since that's where the orbs live.
+/*  mouseTarget/pos/rotation are in world space; proximity is measured in the
+  jellyfish's local (unrotated) coordinate frame since that's where the orbs live.*/
   update(pos: Point, rotation: number, mouseTarget: Point, r: number): void {
     const dxWorld = mouseTarget.x - pos.x;
     const dyWorld = mouseTarget.y - pos.y;
@@ -70,8 +70,8 @@ export class OrbSystem {
     });
   }
 
-  // Must be called within the jellyfish's translated+rotated ctx context; clips
-  // to the bell interior so orbs never poke outside the shell.
+/*  Must be called within the jellyfish's translated+rotated ctx context; clips
+  to the bell interior so orbs never poke outside the shell.*/
   draw(ctx: CanvasRenderingContext2D, r: number, ry: number): void {
     ctx.save();
 

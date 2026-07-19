@@ -1,10 +1,10 @@
 import { Injectable } from '@angular/core';
 import { BehaviorSubject, Observable } from 'rxjs';
 
-// The full set of live-tunable knobs for the jellyfish and its particle
-// systems. Values here mirror the defaults baked into each system class --
-// this service is just the shared, reactive channel the control panel writes
-// to and the canvas component reads from.
+/*The full set of live-tunable knobs for the jellyfish and its particle
+systems. Values here mirror the defaults baked into each system class --
+this service is just the shared, reactive channel the control panel writes
+to and the canvas component reads from.*/
 export interface JellyfishConfig {
   bellRadius: number;
   chaseSpeed: number;

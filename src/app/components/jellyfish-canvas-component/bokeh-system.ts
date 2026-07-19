@@ -1,14 +1,14 @@
 import { BokehLayerConfig, BokehParticle, Point } from './jellyfish.models';
 
-// The background depth-of-field field: several back-to-front layers of soft
-// glowing circles that drift, parallax against the cursor, and occasionally
-// pop (on click, or once every ~30s at random) before respawning elsewhere.
+/*The background depth-of-field field: several back-to-front layers of soft
+glowing circles that drift, parallax against the cursor, and occasionally
+pop (on click, or once every ~30s at random) before respawning elsewhere.*/
 export class BokehSystem {
-  // Back-to-front depth layers: farther layers have smaller/dimmer/more numerous
-  // particles and shift less with the mouse; nearer layers shift more, which is
-  // what sells the parallax depth illusion. The closest layer gets a subtle
-  // outline, like the rim definition real out-of-focus bokeh circles show
-  // when they're nearer the focal plane than the deep background blur.
+/*  Back-to-front depth layers: farther layers have smaller/dimmer/more numerous
+  particles and shift less with the mouse; nearer layers shift more, which is
+  what sells the parallax depth illusion. The closest layer gets a subtle
+  outline, like the rim definition real out-of-focus bokeh circles show
+  when they're nearer the focal plane than the deep background blur.*/
   private readonly layers: BokehLayerConfig[] = [
     { count: 42, radiusRange: [4, 9], opacityRange: [0.02, 0.04], parallaxRange: 4, bobAmount: 3, driftSpeedScale: 0.35 },
     { count: 30, radiusRange: [8, 16], opacityRange: [0.04, 0.08], parallaxRange: 10, bobAmount: 5, driftSpeedScale: 0.5 },
@@ -23,8 +23,8 @@ export class BokehSystem {
   private parallax: Point = { x: 0, y: 0 };
   private ambientPopTimer = 0;
 
-  // Tunable knobs -- live-editable via JellyfishConfigService/the control panel.
-  // particleDensity is structural: call init() again after changing it.
+/*  Tunable knobs -- live-editable via JellyfishConfigService/the control panel.
+  particleDensity is structural: call init() again after changing it.*/
   parallaxStrength = 1;
   particleDensity = 1;
   ambientPopIntervalFrames = 1800; // ~30s at 60fps: one random ambient pop
@@ -39,7 +39,9 @@ export class BokehSystem {
     });
   }
 
-  // Pops the particle closest to (x, y), if the click landed on one.
+/*
+  Pops the particle closest to (x, y), if the click landed on one.
+*/
   handleClick(x: number, y: number): void {
     let closest: BokehParticle | null = null;
     let closestDist = Infinity;
@@ -67,8 +69,8 @@ export class BokehSystem {
   update(canvasWidth: number, canvasHeight: number, mouseTarget: Point): void {
     this.cycle += 0.006;
 
-    // Smoothed rather than snapped straight to the cursor, so the depth
-    // layers drift softly instead of jittering with every mouse tick
+/*    Smoothed rather than snapped straight to the cursor, so the depth
+    layers drift softly instead of jittering with every mouse tick*/
     const targetX = (mouseTarget.x - canvasWidth / 2) / (canvasWidth / 2);
     const targetY = (mouseTarget.y - canvasHeight / 2) / (canvasHeight / 2);
     this.parallax.x += (targetX - this.parallax.x) * 0.04;
@@ -76,9 +78,9 @@ export class BokehSystem {
 
     const popSpeed = 0.07;
 
-    // Ambient popping: once every ~30s, pop a single random particle rather
-    // than each particle having its own independent lifespan -- keeps the
-    // random pops rare and system-wide instead of a constant flurry.
+/*    Ambient popping: once every ~30s, pop a single random particle rather
+    than each particle having its own independent lifespan -- keeps the
+    random pops rare and system-wide instead of a constant flurry.*/
     this.ambientPopTimer++;
     if (this.ambientPopTimer >= this.ambientPopIntervalFrames) {
       this.ambientPopTimer = 0;
@@ -120,7 +122,9 @@ export class BokehSystem {
       let opacity = p.opacity;
 
       if (p.popping) {
-        // Quick ease-out expansion paired with a fade, like a bubble popping
+/*
+        Quick ease-out expansion paired with a fade, like a bubble popping
+*/
         const easeOut = 1 - Math.pow(1 - p.popProgress, 2);
         radius = p.screenRadius * (1 + easeOut * 0.8);
         opacity = p.opacity * (1 - p.popProgress);
@@ -136,8 +140,8 @@ export class BokehSystem {
       ctx.arc(x, y, radius, 0, Math.PI * 2);
       ctx.fill();
 
-      // Closest layer gets a subtle rim, like the crisper edge definition
-      // real bokeh circles show when nearer the focal plane
+/*      Closest layer gets a subtle rim, like the crisper edge definition
+      real bokeh circles show when nearer the focal plane*/
       if (layer.outline && !p.popping) {
         ctx.beginPath();
         ctx.arc(x, y, radius * 0.84, 0, Math.PI * 2);
@@ -147,7 +151,9 @@ export class BokehSystem {
       }
 
       if (p.popping) {
-        // Expanding shockwave ring that fades out as it grows -- the "pop"
+/*
+        Expanding shockwave ring that fades out as it grows -- the "pop"
+*/
         const ringRadius = p.screenRadius * (1 + p.popProgress * 2.2);
         const ringAlpha = (1 - p.popProgress) * 0.5;
         ctx.beginPath();
@@ -161,8 +167,8 @@ export class BokehSystem {
     ctx.restore();
   }
 
-  // Builds a fresh particle for a layer -- used both for the initial fill
-  // and to replace one that just finished popping.
+/*  Builds a fresh particle for a layer -- used both for the initial fill
+  and to replace one that just finished popping.*/
   private spawnParticle(layerIndex: number): BokehParticle {
     const layer = this.layers[layerIndex];
     return {

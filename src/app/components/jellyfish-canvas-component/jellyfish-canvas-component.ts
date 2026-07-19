@@ -66,6 +66,12 @@ export class JellyfishCanvasComponent implements AfterViewInit, OnDestroy {
   private configSub?: Subscription;
   private lastConfig: JellyfishConfig | null = null;
 
+  // Popped state: clicking the body bursts it and drops the tentacles until
+  // regenerate() rebuilds everything a few seconds later.
+  private isPopped = false;
+  private regenerateTimeoutId: ReturnType<typeof setTimeout> | null = null;
+  private readonly regenerateDelayMs = 5000;
+
   constructor(
       private ngZone: NgZone,
       private configService: JellyfishConfigService,
@@ -109,6 +115,9 @@ export class JellyfishCanvasComponent implements AfterViewInit, OnDestroy {
     cancelAnimationFrame(this.animationFrameId);
     this.movement.dispose();
     this.configSub?.unsubscribe();
+    if (this.regenerateTimeoutId !== null) {
+      clearTimeout(this.regenerateTimeoutId);
+    }
   }
 
   // Pushes every config value onto its owning system. Most knobs are read
@@ -177,8 +186,43 @@ export class JellyfishCanvasComponent implements AfterViewInit, OnDestroy {
   };
 
   private onClick = (e: MouseEvent): void => {
+    if (this.isPopped) return;
+
+    const dx = e.clientX - this.movement.pos.x;
+    const dy = e.clientY - this.movement.pos.y;
+    const hitRadius = this.movement.radius * 1.15;
+
+    if (dx * dx + dy * dy <= hitRadius * hitRadius) {
+      this.triggerBodyPop();
+      return;
+    }
+
     this.bokeh.handleClick(e.clientX, e.clientY);
   };
+
+  // Bursts the bell and sends the tentacle bundle falling to the bottom of
+  // the screen; regenerate() rebuilds everything after regenerateDelayMs.
+  private triggerBodyPop(): void {
+    this.isPopped = true;
+    this.body.pop();
+
+    const canvas = this.canvasRef.nativeElement;
+    this.tentacles.startFalling(canvas.height - 40);
+
+    this.regenerateTimeoutId = setTimeout(() => {
+      this.regenerate();
+    }, this.regenerateDelayMs);
+  }
+
+  private regenerate(): void {
+    this.isPopped = false;
+    this.regenerateTimeoutId = null;
+
+    this.movement.refreshActivity();
+    this.tentacles.stopFalling();
+    this.tentacles.init(this.movement.pos);
+    this.body.init();
+  }
 
   private animate = (): void => {
     this.updatePhysics();
@@ -187,12 +231,23 @@ export class JellyfishCanvasComponent implements AfterViewInit, OnDestroy {
   };
 
   private updatePhysics(): void {
-    this.movement.update();
+    // Frozen in place while popped -- the bell stays put and the tentacles
+    // fall from wherever they were when it burst.
+    if (!this.isPopped) {
+      this.movement.update();
+    }
+    this.body.updatePop();
 
     const canvas = this.canvasRef.nativeElement;
     this.bokeh.update(canvas.width, canvas.height, this.movement.target);
 
     const r = this.movement.radius;
+
+    if (this.isPopped) {
+      this.tentacles.updateFalling();
+      return;
+    }
+
     this.body.orbs.update(this.movement.pos, this.movement.rotation, this.movement.target, r);
     this.sheath.update(r, this.movement.pulseCycle);
     this.skirt.update();
@@ -213,25 +268,32 @@ export class JellyfishCanvasComponent implements AfterViewInit, OnDestroy {
     this.ctx.rotate(this.movement.rotation);
 
     // LAYER 1: Inside/back rim of opening
-    this.body.drawOpeningBack(this.ctx, r);
+    if (!this.body.isHidden) {
+      this.body.drawOpeningBack(this.ctx, r);
+    }
 
     this.ctx.restore();
 
-    // LAYER 2: Trailing tentacles
+    // LAYER 2: Trailing tentacles (falling and pooling at the floor while popped)
     this.tentacles.draw(this.ctx);
 
     this.ctx.save();
     this.ctx.translate(this.movement.pos.x, this.movement.pos.y);
     this.ctx.rotate(this.movement.rotation);
 
-    // LAYER 3: Long narrow sheath containing the tentacle bases, flaring like a trumpet
-    this.sheath.draw(this.ctx);
+    if (!this.body.isHidden) {
+      // LAYER 3: Long narrow sheath containing the tentacle bases, flaring like a trumpet
+      this.sheath.draw(this.ctx);
 
-    // LAYER 4: Rippling skirt/frill hanging under the bell, over the tentacle roots
-    this.skirt.draw(this.ctx, r);
+      // LAYER 4: Rippling skirt/frill hanging under the bell, over the tentacle roots
+      this.skirt.draw(this.ctx, r);
 
-    // LAYER 5: Outer shell with horizontal AND vertical grid ribs
-    this.body.drawShellFront(this.ctx, r, this.movement.pulseCycle);
+      // LAYER 5: Outer shell with horizontal AND vertical grid ribs
+      this.body.drawShellFront(this.ctx, r, this.movement.pulseCycle);
+    }
+
+    // Pop burst -- plays briefly over/instead of the shell right as it bursts
+    this.body.drawPopBurst(this.ctx, r);
 
     this.ctx.restore();
   }

@@ -6,8 +6,70 @@ import { OrbSystem } from './orb-system';
 export class JellyfishBody {
   readonly orbs = new OrbSystem();
 
+  private popping = false;
+  private popProgress = 0;
+  private hidden = false;
+
   init(): void {
     this.orbs.init();
+    this.popping = false;
+    this.popProgress = 0;
+    this.hidden = false;
+  }
+
+  // Whether the shell/orbs should be skipped this frame (mid-pop-burst or
+  // waiting out the rest of the pop before regenerate() calls init() again).
+  get isHidden(): boolean {
+    return this.hidden;
+  }
+
+  pop(): void {
+    this.popping = true;
+    this.popProgress = 0;
+    this.hidden = false;
+  }
+
+  updatePop(): void {
+    if (!this.popping) return;
+    this.popProgress += 0.08;
+    if (this.popProgress >= 1) {
+      this.popping = false;
+      this.hidden = true;
+    }
+  }
+
+  // Must be called within the jellyfish's translated+rotated ctx context.
+  // A quick expanding double-ring flash that fades out, like the bell bursting.
+  drawPopBurst(ctx: CanvasRenderingContext2D, r: number): void {
+    if (!this.popping) return;
+
+    const easeOut = 1 - Math.pow(1 - this.popProgress, 2);
+    const alpha = 1 - this.popProgress;
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+
+    ctx.beginPath();
+    ctx.arc(0, 0, r * (1 + easeOut * 2.2), 0, Math.PI * 2);
+    ctx.strokeStyle = `rgba(0, 240, 255, ${alpha * 0.85})`;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(0, 0, r * (1 + easeOut * 1.4), 0, Math.PI * 2);
+    ctx.strokeStyle = `rgba(236, 72, 153, ${alpha * 0.7})`;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    const flashGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, r * (1 - this.popProgress * 0.6));
+    flashGradient.addColorStop(0, `rgba(255, 255, 255, ${alpha * 0.6})`);
+    flashGradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    ctx.fillStyle = flashGradient;
+    ctx.beginPath();
+    ctx.arc(0, 0, r * (1 - this.popProgress * 0.6), 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
   }
 
   // Must be called within the jellyfish's translated+rotated ctx context.

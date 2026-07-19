@@ -37,6 +37,13 @@ export class JellyfishMovement {
     }
   }
 
+  // Restarts the idle-dart countdown from now. Used after a frozen period
+  // (e.g. the body-pop/regenerate pause) so it doesn't dart off immediately
+  // just because real time passed with no update() calls to keep it fresh.
+  refreshActivity(): void {
+    this.lastActivityTime = Date.now();
+  }
+
   onMouseMove(x: number, y: number): void {
     this.target.x = x;
     this.target.y = y;

@@ -1,11 +1,15 @@
 import { Point } from './jellyfish.models';
 
-// The short, rippling frill hanging from the bell rim, over the tentacle roots.
+/*
+The short, rippling frill hanging from the bell rim, over the tentacle roots.
+*/
 export class SkirtSystem {
   private phaseOffsets: number[] = [];
   private cycle = 0;
 
-  // Tunable knobs -- live-editable via JellyfishConfigService/the control panel.
+/*
+  Tunable knobs -- live-editable via JellyfishConfigService/the control panel.
+*/
   rippleAmpFactor = 0.12;
   swayAmpFactor = 0.04;
 
@@ -20,7 +24,9 @@ export class SkirtSystem {
     this.cycle += 0.015;
   }
 
-  // Must be called within the jellyfish's translated+rotated ctx context.
+/*
+  Must be called within the jellyfish's translated+rotated ctx context.
+*/
   draw(ctx: CanvasRenderingContext2D, r: number): void {
     const ry = r * 0.25;
     const spanX = r * 0.78;
@@ -38,10 +44,14 @@ export class SkirtSystem {
       const depthZ = Math.sqrt(Math.max(0, 1 - pct * pct));
       const topY = depthZ * ry * 0.9;
 
-      // Smooth traveling waves across the width, like a current moving through water
+/*
+      Smooth traveling waves across the width, like a current moving through water
+*/
       const wave = Math.sin(this.cycle + t * Math.PI * 2.4) * rippleAmp
           + Math.sin(this.cycle * 1.5 - t * Math.PI * 3.6) * rippleAmp * 0.5;
-      // subtle per-vertex jitter so it reads as organic rather than mechanical
+/*
+      subtle per-vertex jitter so it reads as organic rather than mechanical
+*/
       const jitter = Math.sin(this.cycle * 2 + this.phaseOffsets[i]) * rippleAmp * 0.15;
       const sway = Math.sin(this.cycle * 0.8 + t * Math.PI * 2 + this.phaseOffsets[i]) * swayAmp;
 
@@ -73,7 +83,9 @@ export class SkirtSystem {
     ctx.fillStyle = gradient;
     ctx.fill();
 
-    // Fine tightly-grouped ripple strands tracing the rippling hem, like water
+/*
+    Fine tightly-grouped ripple strands tracing the rippling hem, like water
+*/
     ctx.lineWidth = 0.8;
     for (let strand = 0; strand < 3; strand++) {
       const depthLerp = 0.4 + strand * 0.3;

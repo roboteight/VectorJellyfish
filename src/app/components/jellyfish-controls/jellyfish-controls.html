@@ -1,0 +1,33 @@
+<mat-card class="panel" (click)="$event.stopPropagation()">
+    <mat-card-header>
+        <mat-card-title>Jellyfish Controls</mat-card-title>
+    </mat-card-header>
+
+    <mat-card-content [formGroup]="form">
+        @for (section of sections; track section.title) {
+            <h3 class="section-title">{{ section.title }}</h3>
+
+            @for (control of section.controls; track control.key) {
+                <div class="control-row">
+                    <div class="control-label">
+                        <span>{{ control.label }}</span>
+                        <span class="control-value">{{ form.get(control.key)?.value }}</span>
+                    </div>
+                    <mat-slider
+                            [min]="control.min"
+                            [max]="control.max"
+                            [step]="control.step"
+                            discrete>
+                        <input matSliderThumb [formControlName]="control.key">
+                    </mat-slider>
+                </div>
+            }
+
+            <mat-divider></mat-divider>
+        }
+    </mat-card-content>
+
+    <mat-card-actions>
+        <button mat-stroked-button (click)="resetToDefaults()">Reset to Defaults</button>
+    </mat-card-actions>
+</mat-card>
