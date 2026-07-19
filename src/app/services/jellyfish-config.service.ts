@@ -28,6 +28,13 @@ export interface JellyfishConfig {
   bokehParallaxStrength: number;
   bokehParticleDensity: number;
   bokehPopIntervalSeconds: number;
+
+  seaweedCount: number;
+  seaweedBranchDepth: number;
+  seaweedLength: number;
+  seaweedSwayAmplitude: number;
+  seaweedSwaySpeed: number;
+  seaweedMouseInfluence: number;
 }
 
 export const DEFAULT_JELLYFISH_CONFIG: JellyfishConfig = {
@@ -52,7 +59,14 @@ export const DEFAULT_JELLYFISH_CONFIG: JellyfishConfig = {
 
   bokehParallaxStrength: 1,
   bokehParticleDensity: 1,
-  bokehPopIntervalSeconds: 30
+  bokehPopIntervalSeconds: 30,
+
+  seaweedCount: 9,
+  seaweedBranchDepth: 6,
+  seaweedLength: 60,
+  seaweedSwayAmplitude: 0.35,
+  seaweedSwaySpeed: 0.02,
+  seaweedMouseInfluence: 140
 };
 
 @Injectable({ providedIn: 'root' })

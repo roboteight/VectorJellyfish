@@ -84,6 +84,17 @@ export class JellyfishControls {
                 {key: 'bokehParticleDensity', label: 'Particle Density', min: 0.2, max: 3, step: 0.1},
                 {key: 'bokehPopIntervalSeconds', label: 'Pop Interval (s)', min: 5, max: 60, step: 1}
             ]
+        },
+        {
+            title: 'Seaweed',
+            controls: [
+                {key: 'seaweedCount', label: 'Plant Count', min: 3, max: 20, step: 1},
+                {key: 'seaweedBranchDepth', label: 'Branch Depth', min: 3, max: 8, step: 1},
+                {key: 'seaweedLength', label: 'Length', min: 20, max: 120, step: 5},
+                {key: 'seaweedSwayAmplitude', label: 'Sway Amplitude', min: 0, max: 1, step: 0.05},
+                {key: 'seaweedSwaySpeed', label: 'Sway Speed', min: 0.005, max: 0.05, step: 0.005},
+                {key: 'seaweedMouseInfluence', label: 'Mouse Influence', min: 40, max: 300, step: 10}
+            ]
         }
     ];
 

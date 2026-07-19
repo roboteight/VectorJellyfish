@@ -16,16 +16,18 @@ import { JellyfishBody } from './jellyfish-body';
 import { SkirtSystem } from './skirt-system';
 import { SheathSystem } from './sheath-system';
 import { BokehSystem } from './bokeh-system';
+import { SeaweedSystem } from './seaweed-system';
 import { JellyfishConfig, JellyfishConfigService } from '../../services/jellyfish-config.service';
 
-// Orchestrates the jellyfish scene: owns the canvas/animation loop and DOM
-// events, and delegates all state and rendering to the focused systems below.
-//   - JellyfishMovement: chasing the cursor, heading, pulse, idle darts
-//   - TentacleSystem: the trailing tentacle bundle
-//   - JellyfishBody: the bell shell (composes OrbSystem for the inner orbs)
-//   - SkirtSystem: the short rippling frill at the rim
-//   - SheathSystem: the long trumpet-flared sheath over the tentacle bases
-//   - BokehSystem: the background depth-of-field/parallax particle field
+/*Orchestrates the jellyfish scene: owns the canvas/animation loop and DOM
+events, and delegates all state and rendering to the focused systems below.
+  - JellyfishMovement: chasing the cursor, heading, pulse, idle darts
+  - TentacleSystem: the trailing tentacle bundle
+  - JellyfishBody: the bell shell (composes OrbSystem for the inner orbs)
+  - SkirtSystem: the short rippling frill at the rim
+  - SheathSystem: the long trumpet-flared sheath over the tentacle bases
+  - BokehSystem: the background depth-of-field/parallax particle field
+  - SeaweedSystem: the fractally-branching seaweed bed at the floor*/
 @Component({
   selector: 'app-jellyfish-canvas',
   standalone: true,
@@ -62,12 +64,13 @@ export class JellyfishCanvasComponent implements AfterViewInit, OnDestroy {
   private readonly skirt = new SkirtSystem();
   private readonly sheath = new SheathSystem();
   private readonly bokeh = new BokehSystem();
+  private readonly seaweed = new SeaweedSystem();
 
   private configSub?: Subscription;
   private lastConfig: JellyfishConfig | null = null;
 
-  // Popped state: clicking the body bursts it and drops the tentacles until
-  // regenerate() rebuilds everything a few seconds later.
+  /*Popped state: clicking the body bursts it and drops the tentacles until
+  regenerate() rebuilds everything a few seconds later.*/
   private isPopped = false;
   private regenerateTimeoutId: ReturnType<typeof setTimeout> | null = null;
   private readonly regenerateDelayMs = 5000;
@@ -97,9 +100,10 @@ export class JellyfishCanvasComponent implements AfterViewInit, OnDestroy {
     this.body.init();
     this.sheath.init(this.baseRadius, this.movement.pulseCycle);
     this.bokeh.init();
+    this.seaweed.init();
 
-    // Applies once immediately (with defaults matching the above init calls),
-    // then live on every change pushed from the control panel.
+/*    Applies once immediately (with defaults matching the above init calls),
+    then live on every change pushed from the control panel.*/
     this.configSub = this.configService.config$.subscribe(cfg => this.applyConfig(cfg));
 
     this.ngZone.runOutsideAngular(() => {
@@ -120,10 +124,10 @@ export class JellyfishCanvasComponent implements AfterViewInit, OnDestroy {
     }
   }
 
-  // Pushes every config value onto its owning system. Most knobs are read
-  // directly by that system's update()/draw() each frame, so a plain field
-  // assignment is enough; a few are structural (they size an array built at
-  // init time), so those additionally trigger a re-init when they change.
+/*  Pushes every config value onto its owning system. Most knobs are read
+  directly by that system's update()/draw() each frame, so a plain field
+  assignment is enough; a few are structural (they size an array built at
+  init time), so those additionally trigger a re-init when they change.*/
   private applyConfig(cfg: JellyfishConfig): void {
     const prev = this.lastConfig;
     this.lastConfig = cfg;
@@ -168,6 +172,17 @@ export class JellyfishCanvasComponent implements AfterViewInit, OnDestroy {
     if (bokehChanged) {
       this.bokeh.init();
     }
+
+    this.seaweed.branchDepth = cfg.seaweedBranchDepth;
+    this.seaweed.baseLength = cfg.seaweedLength;
+    this.seaweed.swayAmplitude = cfg.seaweedSwayAmplitude;
+    this.seaweed.swaySpeed = cfg.seaweedSwaySpeed;
+    this.seaweed.mouseInfluence = cfg.seaweedMouseInfluence;
+    const seaweedChanged = !prev || prev.seaweedCount !== cfg.seaweedCount;
+    this.seaweed.plantCount = cfg.seaweedCount;
+    if (seaweedChanged) {
+      this.seaweed.init();
+    }
   }
 
   private onResize = (): void => {
@@ -200,8 +215,8 @@ export class JellyfishCanvasComponent implements AfterViewInit, OnDestroy {
     this.bokeh.handleClick(e.clientX, e.clientY);
   };
 
-  // Bursts the bell and sends the tentacle bundle falling to the bottom of
-  // the screen; regenerate() rebuilds everything after regenerateDelayMs.
+/*  Bursts the bell and sends the tentacle bundle falling to the bottom of
+  the screen; regenerate() rebuilds everything after regenerateDelayMs.*/
   private triggerBodyPop(): void {
     this.isPopped = true;
     this.body.pop();
@@ -231,8 +246,8 @@ export class JellyfishCanvasComponent implements AfterViewInit, OnDestroy {
   };
 
   private updatePhysics(): void {
-    // Frozen in place while popped -- the bell stays put and the tentacles
-    // fall from wherever they were when it burst.
+/*    Frozen in place while popped -- the bell stays put and the tentacles
+    fall from wherever they were when it burst.*/
     if (!this.isPopped) {
       this.movement.update();
     }
@@ -240,6 +255,7 @@ export class JellyfishCanvasComponent implements AfterViewInit, OnDestroy {
 
     const canvas = this.canvasRef.nativeElement;
     this.bokeh.update(canvas.width, canvas.height, this.movement.target);
+    this.seaweed.update(this.movement.target.x, canvas.width);
 
     const r = this.movement.radius;
 
@@ -260,21 +276,32 @@ export class JellyfishCanvasComponent implements AfterViewInit, OnDestroy {
 
     const r = this.movement.radius;
 
-    // LAYER 0: Background bokeh, drifting depth-of-field particles with parallax
+/*
+    LAYER 0: Background bokeh, drifting depth-of-field particles with parallax
+*/
     this.bokeh.draw(this.ctx);
+
+/*
+    LAYER 0b: Fractal seaweed bed rooted along the floor
+*/
+    this.seaweed.draw(this.ctx, canvas.width, canvas.height);
 
     this.ctx.save();
     this.ctx.translate(this.movement.pos.x, this.movement.pos.y);
     this.ctx.rotate(this.movement.rotation);
 
-    // LAYER 1: Inside/back rim of opening
+/*
+    LAYER 1: Inside/back rim of opening
+*/
     if (!this.body.isHidden) {
       this.body.drawOpeningBack(this.ctx, r);
     }
 
     this.ctx.restore();
 
-    // LAYER 2: Trailing tentacles (falling and pooling at the floor while popped)
+/*
+    LAYER 2: Trailing tentacles (falling and pooling at the floor while popped)
+*/
     this.tentacles.draw(this.ctx);
 
     this.ctx.save();
@@ -282,17 +309,25 @@ export class JellyfishCanvasComponent implements AfterViewInit, OnDestroy {
     this.ctx.rotate(this.movement.rotation);
 
     if (!this.body.isHidden) {
-      // LAYER 3: Long narrow sheath containing the tentacle bases, flaring like a trumpet
+/*
+      LAYER 3: Long narrow sheath containing the tentacle bases, flaring like a trumpet
+*/
       this.sheath.draw(this.ctx);
 
-      // LAYER 4: Rippling skirt/frill hanging under the bell, over the tentacle roots
+/*
+      LAYER 4: Rippling skirt/frill hanging under the bell, over the tentacle roots
+*/
       this.skirt.draw(this.ctx, r);
 
-      // LAYER 5: Outer shell with horizontal AND vertical grid ribs
+/*
+      LAYER 5: Outer shell with horizontal AND vertical grid ribs
+*/
       this.body.drawShellFront(this.ctx, r, this.movement.pulseCycle);
     }
 
-    // Pop burst -- plays briefly over/instead of the shell right as it bursts
+/*
+    Pop burst -- plays briefly over/instead of the shell right as it bursts
+*/
     this.body.drawPopBurst(this.ctx, r);
 
     this.ctx.restore();
