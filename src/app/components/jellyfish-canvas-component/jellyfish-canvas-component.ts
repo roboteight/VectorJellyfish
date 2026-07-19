@@ -173,13 +173,13 @@ export class JellyfishCanvasComponent implements AfterViewInit, OnDestroy {
       this.bokeh.init();
     }
 
-    this.seaweed.branchDepth = cfg.seaweedBranchDepth;
-    this.seaweed.baseLength = cfg.seaweedLength;
-    this.seaweed.swayAmplitude = cfg.seaweedSwayAmplitude;
-    this.seaweed.swaySpeed = cfg.seaweedSwaySpeed;
-    this.seaweed.mouseInfluence = cfg.seaweedMouseInfluence;
-    const seaweedChanged = !prev || prev.seaweedCount !== cfg.seaweedCount;
-    this.seaweed.plantCount = cfg.seaweedCount;
+    this.seaweed.branchDepth = cfg?.seaweedBranchDepth;
+    this.seaweed.baseLength = cfg?.seaweedLength;
+    this.seaweed.swayAmplitude = cfg?.seaweedSwayAmplitude;
+    this.seaweed.swaySpeed = cfg?.seaweedSwaySpeed;
+    this.seaweed.mouseInfluence = cfg?.seaweedMouseInfluence;
+    const seaweedChanged = !prev || prev?.seaweedCount !== cfg?.seaweedCount;
+    this.seaweed.plantCount = cfg?.seaweedCount;
     if (seaweedChanged) {
       this.seaweed.init();
     }
@@ -246,14 +246,15 @@ export class JellyfishCanvasComponent implements AfterViewInit, OnDestroy {
   };
 
   private updatePhysics(): void {
+    const canvas = this.canvasRef.nativeElement;
+
 /*    Frozen in place while popped -- the bell stays put and the tentacles
     fall from wherever they were when it burst.*/
     if (!this.isPopped) {
-      this.movement.update();
+      this.movement.update(canvas.width, canvas.height);
     }
     this.body.updatePop();
 
-    const canvas = this.canvasRef.nativeElement;
     this.bokeh.update(canvas.width, canvas.height, this.movement.target);
     this.seaweed.update(this.movement.target.x, canvas.width);
 

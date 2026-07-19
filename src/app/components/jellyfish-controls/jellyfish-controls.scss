@@ -1,19 +1,52 @@
 :host {
   position: fixed;
+  inset: 0;
+  z-index: 10;
+  /* Lets clicks pass through to the canvas everywhere except the toggle
+     button and the drawer itself, which re-enable pointer-events below. */
+  pointer-events: none;
+}
+
+.open-toggle {
+  position: absolute;
   top: 16px;
   right: 16px;
-  bottom: 16px;
+  pointer-events: auto;
+  z-index: 11;
+}
+
+.shell {
+  width: 100%;
+  height: 100%;
+  background: transparent;
+}
+
+.drawer {
   width: 320px;
-  z-index: 10;
+  pointer-events: auto;
+  background: transparent;
+  box-shadow: none;
 }
 
 .panel {
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: rgba(5, 15, 35, 0.82);
+  background: rgba(5, 15, 35, 0.92);
   backdrop-filter: blur(10px);
   color: rgba(255, 255, 255, 0.92);
+  border-radius: 0;
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.icon {
+  font-size: 20px;
+  line-height: 1;
 }
 
 mat-card-content {

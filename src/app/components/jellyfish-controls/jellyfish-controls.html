@@ -1,33 +1,51 @@
-<mat-card class="panel" (click)="$event.stopPropagation()">
-    <mat-card-header>
-        <mat-card-title>Jellyfish Controls</mat-card-title>
-    </mat-card-header>
+@if (!isOpen) {
+    <button
+            mat-fab
+            color="primary"
+            class="open-toggle"
+            (click)="isOpen = true"
+            aria-label="Show controls">
+        <span class="icon">&#9881;</span>
+    </button>
+}
 
-    <mat-card-content [formGroup]="form">
-        @for (section of sections; track section.title) {
-            <h3 class="section-title">{{ section.title }}</h3>
+<mat-sidenav-container class="shell" [hasBackdrop]="false" autosize>
+    <mat-sidenav class="drawer" mode="over" position="end" [opened]="isOpen" (click)="$event.stopPropagation()">
+        <mat-card class="panel">
+            <mat-card-header class="panel-header">
+                <mat-card-title>Jellyfish Controls</mat-card-title>
+                <button mat-icon-button (click)="isOpen = false" aria-label="Hide controls">
+                    <span class="icon">&#10005;</span>
+                </button>
+            </mat-card-header>
 
-            @for (control of section.controls; track control.key) {
-                <div class="control-row">
-                    <div class="control-label">
-                        <span>{{ control.label }}</span>
-                        <span class="control-value">{{ form.get(control.key)?.value }}</span>
-                    </div>
-                    <mat-slider
-                            [min]="control.min"
-                            [max]="control.max"
-                            [step]="control.step"
-                            discrete>
-                        <input matSliderThumb [formControlName]="control.key">
-                    </mat-slider>
-                </div>
-            }
+            <mat-card-content [formGroup]="form">
+                @for (section of sections; track section.title) {
+                    <h3 class="section-title">{{ section.title }}</h3>
 
-            <mat-divider></mat-divider>
-        }
-    </mat-card-content>
+                    @for (control of section.controls; track control.key) {
+                        <div class="control-row">
+                            <div class="control-label">
+                                <span>{{ control.label }}</span>
+                                <span class="control-value">{{ form.get(control.key)?.value }}</span>
+                            </div>
+                            <mat-slider
+                                    [min]="control.min"
+                                    [max]="control.max"
+                                    [step]="control.step"
+                                    discrete>
+                                <input matSliderThumb [formControlName]="control.key">
+                            </mat-slider>
+                        </div>
+                    }
 
-    <mat-card-actions>
-        <button mat-stroked-button (click)="resetToDefaults()">Reset to Defaults</button>
-    </mat-card-actions>
-</mat-card>
+                    <mat-divider></mat-divider>
+                }
+            </mat-card-content>
+
+            <mat-card-actions>
+                <button mat-stroked-button (click)="resetToDefaults()">Reset to Defaults</button>
+            </mat-card-actions>
+        </mat-card>
+    </mat-sidenav>
+</mat-sidenav-container>

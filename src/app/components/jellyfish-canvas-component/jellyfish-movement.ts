@@ -1,15 +1,19 @@
 import { Point } from './jellyfish.models';
 
-// Owns the jellyfish's core motion: chasing the cursor, facing its heading,
-// the breathing pulse cycle, and the idle-dart burst. Every other visual
-// system (tentacles, body, sheath) reads pos/rotation/pulseCycle from here.
+function clamp(value: number, min: number, max: number): number {
+  return min <= max ? Math.min(max, Math.max(min, value)) : (min + max) / 2;
+}
+
+/*Owns the jellyfish's core motion: chasing the cursor, facing its heading,
+the breathing pulse cycle, and the idle-dart burst. Every other visual
+system (tentacles, body, sheath) reads pos/rotation/pulseCycle from here.*/
 export class JellyfishMovement {
   target: Point = { x: 400, y: 300 };
   pos: Point = { x: 400, y: 300 };
   rotation = 0;
   pulseCycle = 0;
 
-  // Tunable knobs -- live-editable via JellyfishConfigService/the control panel.
+  /*Tunable knobs -- live-editable via JellyfishConfigService/the control panel.*/
   baseRadius: number;
   normalChaseSpeed = 0.03;
   pulseSpeed = 0.04;
@@ -37,9 +41,9 @@ export class JellyfishMovement {
     }
   }
 
-  // Restarts the idle-dart countdown from now. Used after a frozen period
-  // (e.g. the body-pop/regenerate pause) so it doesn't dart off immediately
-  // just because real time passed with no update() calls to keep it fresh.
+/*  Restarts the idle-dart countdown from now. Used after a frozen period
+  (e.g. the body-pop/regenerate pause) so it doesn't dart off immediately
+  just because real time passed with no update() calls to keep it fresh.*/
   refreshActivity(): void {
     this.lastActivityTime = Date.now();
   }
@@ -59,15 +63,17 @@ export class JellyfishMovement {
     }
   }
 
-  // The jellyfish's current bell radius, pulsing with its breathing cycle.
+/*
+  The jellyfish's current bell radius, pulsing with its breathing cycle.
+*/
   get radius(): number {
     const pulseScale = 1 + Math.sin(this.pulseCycle) * 0.12;
     return this.baseRadius * pulseScale;
   }
 
-  update(): void {
+  update(canvasWidth: number, canvasHeight: number): void {
     if (!this.isDarting && Date.now() - this.lastActivityTime > this.idleDartDelayMs) {
-      this.triggerIdleDart();
+      this.triggerIdleDart(canvasWidth, canvasHeight);
     }
 
     const dx = this.target.x - this.pos.x;
@@ -85,18 +91,25 @@ export class JellyfishMovement {
     this.pulseCycle += this.pulseSpeed;
   }
 
-  // Fires after idleDartDelayMs of no mouse movement: sends the jellyfish
-  // shooting off toward a random point, then eases back to its normal,
-  // mouse-following cruise speed once the burst is done.
-  private triggerIdleDart(): void {
+/*  Fires after idleDartDelayMs of no mouse movement: sends the jellyfish
+  shooting off toward a random point, then eases back to its normal,
+  mouse-following cruise speed once the burst is done. The target is
+  clamped to the canvas (with a margin for the bell's own radius) so the
+  dart never sends it off screen.*/
+  private triggerIdleDart(canvasWidth: number, canvasHeight: number): void {
     this.isDarting = true;
     this.lastActivityTime = Date.now();
 
     const angle = Math.random() * Math.PI * 2;
     const distance = 500 + Math.random() * 500;
+    const margin = this.radius * 1.5 + 20;
+
+    const rawX = this.pos.x + Math.cos(angle) * distance;
+    const rawY = this.pos.y + Math.sin(angle) * distance;
+
     this.target = {
-      x: this.pos.x + Math.cos(angle) * distance,
-      y: this.pos.y + Math.sin(angle) * distance
+      x: clamp(rawX, margin, canvasWidth - margin),
+      y: clamp(rawY, margin, canvasHeight - margin)
     };
     this.chaseSpeed = 0.12;
 

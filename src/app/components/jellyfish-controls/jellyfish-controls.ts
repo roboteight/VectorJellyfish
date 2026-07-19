@@ -4,6 +4,7 @@ import {MatCardModule} from '@angular/material/card';
 import {MatSliderModule} from '@angular/material/slider';
 import {MatButtonModule} from '@angular/material/button';
 import {MatDividerModule} from '@angular/material/divider';
+import {MatSidenavModule} from '@angular/material/sidenav';
 import {
     DEFAULT_JELLYFISH_CONFIG,
     JellyfishConfig,
@@ -23,19 +24,23 @@ interface SliderSection {
     controls: SliderSpec[];
 }
 
-// A live control panel for every tunable knob exposed by the jellyfish and
-// its particle systems. There is no submit button -- the form pushes its
-// full value onto JellyfishConfigService on every change, and the canvas
-// component (subscribed to that service) applies it the same frame.
+/*A live control panel for every tunable knob exposed by the jellyfish and
+its particle systems. There is no submit button -- the form pushes its
+full value onto JellyfishConfigService on every change, and the canvas
+component (subscribed to that service) applies it the same frame.*/
 @Component({
     selector: 'app-jellyfish-controls',
     standalone: true,
-    imports: [ReactiveFormsModule, MatCardModule, MatSliderModule, MatButtonModule, MatDividerModule],
+    imports: [ReactiveFormsModule, MatCardModule, MatSliderModule, MatButtonModule, MatDividerModule, MatSidenavModule],
     templateUrl: './jellyfish-controls.html',
     styleUrl: './jellyfish-controls.scss',
 })
 export class JellyfishControls {
     readonly form: FormGroup;
+
+/*    Drawer starts closed; the toggle button (shown when hidden) and the
+    close button in the panel header (shown when open) both flip this.*/
+    isOpen = false;
 
     readonly sections: SliderSection[] = [
         {
