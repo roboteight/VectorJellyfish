@@ -222,7 +222,7 @@ export class JellyfishCanvasComponent implements AfterViewInit, OnDestroy {
     this.body.pop();
 
     const canvas = this.canvasRef.nativeElement;
-    this.tentacles.startFalling(canvas.height - 40);
+    this.tentacles.startFalling(canvas.height - 4);
 
     this.regenerateTimeoutId = setTimeout(() => {
       this.regenerate();
